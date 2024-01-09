@@ -1,0 +1,6 @@
+demo
+normalMap=drumal.png
+albedoMap=drumbedo.png
+aoMap=drumbient.png
+metalnessMap=drumetallic.png
+glossinessMap=drumgloss.png

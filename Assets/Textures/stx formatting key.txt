@@ -1,0 +1,19 @@
+Top line will always be the name of the sampler to use, no extension (i.e. to use sampler.cfg for this texture, the top line would just read "sampler")
+
+[for any map entry, the preceeding line may be sampler=samplerName if the sampler to use for the map differs from the default declared at the top]
+[the map value must include the extension for the image to use as the map.]
+
+diffuseMap=example.ext
+specularMap
+bumpMap / heightMap
+albedoMap / colorMap 
+normalMap
+reflectivityMap /metalnessMap
+glossinessMap (roughness is the inverse but I think it's just a less intuitive map so we'll let artists do gloss and convert behind the scenes)
+aoMap / ambientOcclusionMap
+opacityMap
+refractionMap
+emissiveMap
+
+[entry]
+texture:name|UUID= sampler, pic.png; [repeat for rest of maps]

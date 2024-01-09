@@ -1,0 +1,7 @@
+demo
+diffuseMap=hat.png
+colorMap=hat.png
+normalMap=normat.png
+specularMap=hatcular.png
+bumpMap=hump.png
+glossinessMap=hatfuzz.png
