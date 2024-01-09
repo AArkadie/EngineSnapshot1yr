@@ -1,0 +1,3 @@
+The custom format for this will be .smh, with .smd being reserved for model files.
+Meshes contain vertex data, Models combine meshes with transforms and animation data...?
+We'll cross that bridge when we get to it.

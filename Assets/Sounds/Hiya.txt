@@ -1,0 +1,2 @@
+This is where predefined waves will go.  We've yet to see if there should be a separate type of asset for the likes of music and voice lines and such.
+Might all get compiled into sound packs since I imagine there'd be a lot of different files like that.

@@ -1,0 +1,3 @@
+guided
+diffuseMap specularMap heightMap albedoMap normalMap reflectivityMap glossinessMap ambientOcclusionMap
+default matrix

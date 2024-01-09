@@ -1,0 +1,8 @@
+For now, just have vertex input type on one line.
+Maybe in the future will have more meta info,
+but it looks like everything else is easily reflected.
+Files must have same root as the program it goes with.
+
+none / default / sprite / particle
+
+alternatively, the absence of an ssmi is the same as an ssmi reading "none".

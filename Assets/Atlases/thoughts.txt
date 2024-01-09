@@ -1,0 +1,21 @@
+We'll have to note file extension of building blocks or otherwise differentiate types because there are different ways to make atlases.
+What comes to mind immediately is the difference between a bitmap and true type font, both ways that we can get a glyph atlas.
+Then, of course, there are different atlas uses: sprite sheets, tilemaps, fonts, probably other things that aren't rgba vecs.
+
+So for the file format, I feel the top should specify the filename with extension that will be used for the atlas
+then below that is metadata that will be needed to compile that specific file.
+Another option is to just have different extensions for different atlas types that are all covered under the "atlas" umbrella.
+Not sure what would make that approach better than the former except maybe for clarity to the user.
+
+For the shader we can have: The one descriptor passed in is the atlas and we simply construct rectangles and texture them based on
+the character that the shader is processing, passing in new vertices with every draw command based on advancement data.
+For our imagined approach, the shader only takes in the vertices for a giant rect and the descriptor is a texture that's been
+blitted to construct from the atlas in main memory.  The question here is about layout transitions and whether the descriptor
+will need to be updated with a new image view every time and the speed difference between approaches.  I feel like the blitting
+approach might be better than drawing a bunch of rectangles every frame.  The data only changes when the text does.
+Then again, for diagnostic text this would be every frame since we need updates on numbers.
+Maybe calls for 2 different types of text rendering.  Perhaps it's an opportunity to test out suspending dynamic rendering
+since we'll have to pause the pass to transfer the resource layouts and blit the new info and all that.
+Another useful thing I thought of is being able to blit keyframes into an animation timeline dynamically and pseudorandomly
+so that animation tweens can feel less stale.  There's an idea (that's probably already been thought of and/or how they do it anyways).
+Then still, scores may use atlases to dynamically compose music.  Keep the dream alive!

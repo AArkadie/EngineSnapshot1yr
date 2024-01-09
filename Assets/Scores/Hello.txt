@@ -1,0 +1,10 @@
+This is where scripts for the synthesizer will go.  Basically rolling our own MIDI, will we include midi as an option?
+If we do end up parsing MIDI, we'll need to roll it and a score-equivalent file into a common form (score).
+
+
+:)
+
+Other notes: We want a score to be the constituent parts of a potential track and nothing more.  There will be different,
+game-sided files called arrangements which will change how and when the score gets synthesized.  Not that the score isn't part
+of the game but you know, the arrangement is what the designer should have to worry about and actually knows about game details
+while the score is the artist's job and is game-agnostic.

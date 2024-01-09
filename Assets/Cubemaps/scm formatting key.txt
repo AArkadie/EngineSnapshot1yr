@@ -1,0 +1,5 @@
+So far just have the name and we automatically assume 6 corresponding textures affixed with
+_U, _D, _L, _R, _F, and _B
+
+Later on might have some metadata like what kind of cubemap, like skybox vs environmental lighting map
+maybe ability to have custom sampler, if cubemaps need different samplers

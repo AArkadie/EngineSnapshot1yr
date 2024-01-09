@@ -1,0 +1,16 @@
+first will be the shader name used for the material
+then the type of texture maps that are used by the material (same names as in .stx files).
+then the list of pipeline configs to use with said shader.
+So the .smt will always start with 3 space-delimited lines.
+After that, any other properties that the material might need to know?  Or do we just hard-code those values into a shader since a material IS a shader + some info?
+
+In the binary, the cache will be appended to the end of the file by the cache manager, not as part of the initial compilation process.
+
+Binary Format:
+Shader UUID
+Texture type array size , [texture type bindings(uints)] (omitted for now, keep in mind)
+(maybe we also need to store pipeline config names/UUID?)
+pipeline cache data size, [pipeline cache info](alternatively can just say "read to eof"?)
+
+[entry]
+material:name|UUID= shaderUUID; mapType1, mapType2, mapType3; pipelineCFG1, pipelineCFG2, pipelineCFG3
