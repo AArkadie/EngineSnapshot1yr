@@ -1,0 +1,12 @@
+{Init}You find yourself knelt before the King.  Being the hero foretold of in prophecy, he lays the kingdom's troubles before you.
+{Rescue the princess!}The royal line must be protected at all costs!  You make your way to your trusty steed and set off for the dragon's tower.  On your way to the tower you come upon a river.
+{Take care of the goblins!}If the goblins keep disrupting the economy with their raids, there won't be a kingdom left to protect! You set out to the town square to gather information of recent goblin sightings.
+{Help the local cat out of a tree!}The king judges you an imposter! No hero would bother himself with such nonsense! You are summarily executed.
+{Go left.}You come to a bridge, but a troll blocks the way! I don't have time to write the riddle but you couldn't solve it anyways and the troll bonks you to death.
+{Attempt to cross.}At least your horse drowned before you did.
+{Go right.}You come upon a roaring waterfall. Turns out the princess was hiding behind it and the dragon comes looking.  Good thing it only found you, you fly away to your death knowing that the kingdom will be safe.
+{Ask the Goblin}The Goblin says it was all a big misunderstanding. The goblins needed supplies to rescue the princess.  The goblin parade comes into town carrying her and the kingdom is saved, no thanks to you.
+{Ask the Suspicious Man in the cloak}The guards see you talking to the famed drug dealer and lock you up for the rest of your days.
+{Ask the Bloodied and Bitten Farmer}The farmer bites you.  Turns out it was rabies.  Sucks.
+{Trust your instincts}You just go around indescriminantly slaying every goblin you see.  The guards lock you away.  Nice instincts, "hero".
+[0,1,2,3;1,4,5,6;2,7,8,9,10]

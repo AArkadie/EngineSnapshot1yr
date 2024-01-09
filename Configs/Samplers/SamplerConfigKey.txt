@@ -1,0 +1,53 @@
+Top line will be used to number the files if we compile these into binaries.  This will be an offset multiplier into the blob to find the data we need.
+Careful not to put anything there because it will be overwritten.
+
+NO WHITESPACE IN ENTRIES, purely for illustrative purposes.
+ALL ENTRIES ARE CASE SENSITIVE
+
+[key-only symbols]
+, - separates value options
+/ - denotes option aliases
+() - comments/clarifications if containing words , literal(not key-only) if consisting of operations/symbols
+[] - section separators
+
+[bools]
+
+enableAnisotropicFiltering                           = 1 , 0
+enableReferenceComparison                            = 1 , 0
+usePixelCoordinates / unnormalizedCoordinates        = 1 , 0
+
+[strings]
+
+magnificationFilter                                  = nearest , linear
+minificationFilter                                   = nearest , linear
+mipmapMode                                           = nearest , linear
+outOfBoundsBehaviorU                                 = repeat , mirroredRepeat , clampToBorder , clampToEdge , mirroredClampToEdge
+outOfBoundsBehaviorV                                 = repeat , mirroredRepeat , clampToBorder , clampToEdge , mirroredClampToEdge
+outOfBoundsBehaviorW                                 = repeat , mirroredRepeat , clampToBorder , clampToEdge , mirroredClampToEdge
+outOfBoundsColor                                     = transparentBlackFloat , transparentBlackInt , opaqueBlackFloat , opaqueBlackInt , opaqueWhiteFloat , opaqueWhiteInt
+referenceComparisonOperation / referenceComparisonOp = 0 / never , < / less , == / equal , <= / lessOrEqual , > / greater , != / notEqual , >= / greaterOrEqual , 1 / always
+
+[numbers]
+
+minLod                                               = (float that's <= maxLod)
+maxLod                                               = (float) , cap / max
+percentMipLodBias                                    = (float from zero to one)
+percentMaxAnisotropy                                 = (float from zero to one)
+
+[Alphabetical Ordering for Reference (best case for sort function)]
+
+enableAniso
+enableRef
+magni
+maxLod
+minLod
+minif
+mipmap
+out...U
+out...V
+out...W
+out...Color
+percentMax
+percentMip
+ref
+use

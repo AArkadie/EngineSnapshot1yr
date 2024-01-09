@@ -1,0 +1,1087 @@
+---------------------------------------------------------------------------------------------------
+CYOA Leftovers
+---------------------------------------------------------------------------------------------------
+// CYOA Game Stuff
+/*
+
+	short ans;
+	std::vector<SAGE::TextModule> activeModules{};
+	SAGE::CYOAload("SaveTheKingdom.txt", activeModules);
+	SAGE::TextModule* current = &activeModules[0];
+
+	//
+
+	while (current->display()) {
+
+		std::cin >> ans;
+		std::cout << std::endl;
+
+	current = current->choose(ans);
+
+	system("CLS");//becomes a screen refresh when we don't use console.
+
+	}
+
+	//
+
+    system("pause");
+
+*/
+---------------------------------------------------------------------------------------------------
+Much Ado About Mipmaps
+---------------------------------------------------------------------------------------------------
+uint32_t maxMips;
+...
+maxMips = static_cast<uint32_t>(
+	std::floor(
+		std::log2(
+			std::max(textureWidth, textureHeight
+			)/*What's our largest dimension?*/
+		)/*How many times can we halve?*/
+	)/*clamp it down*/
+) + 1/*Our base image layer*/;
+...
+vkSampler.maxLod = static_cast<float>(maxMips);
+...
+VulkanTensor takes in mip count as an argument.
+imageCreateInfo.mipLevels = mips;
+imageViewCreateInfo.subresourceRange.levelCount = mips;
+
+after transfering ownership to present queue, would use generateMipMap()
+...
+	void VulkanTensor::generateMipMap() {
+		VkImageMemoryBarrier blitBarrier;
+		blitBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		blitBarrier.pNext = nullptr;
+		blitBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		blitBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		blitBarrier.image = image;
+		blitBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blitBarrier.subresourceRange.levelCount = 1;
+		blitBarrier.subresourceRange.baseArrayLayer = 0;
+		blitBarrier.subresourceRange.layerCount = 1;
+
+		int32_t mipW = extent.width, mipH = extent.height;
+
+		vkBeginCommandBuffer(cBuffer, &stdBegin);
+		for (uint32_t i = 1; i < maxMips; i++) {
+			blitBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			blitBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			blitBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			blitBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			blitBarrier.subresourceRange.baseMipLevel = i - 1;
+			vkCmdPipelineBarrier(cBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &blitBarrier);
+
+			VkImageBlit blit;
+			blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			blit.srcSubresource.baseArrayLayer = 0;
+			blit.srcSubresource.layerCount = 1;
+			blit.srcSubresource.mipLevel = i - 1;
+			blit.srcOffsets[0] = { 0,0,0 };
+			blit.srcOffsets[1] = { mipW, mipH, 1 };
+			blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			blit.dstSubresource.baseArrayLayer = 0;
+			blit.dstSubresource.layerCount = 1;
+			blit.dstSubresource.mipLevel = i;
+			blit.dstOffsets[0] = { 0,0,0 };
+			blit.dstOffsets[1] = { mipW > 1 ? mipW / 2 : 1, mipH > 1 ? mipH / 2 : 1, 1 };
+			vkCmdBlitImage(cBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+
+			blitBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			blitBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			blitBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			blitBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			vkCmdPipelineBarrier(cBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &blitBarrier);
+
+			if (mipW > 1)mipW /= 2;
+			if (mipH > 1)mipH /= 2;
+		}
+
+		blitBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		blitBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		blitBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		blitBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		blitBarrier.subresourceRange.baseMipLevel = maxMips - 1;
+		vkCmdPipelineBarrier(cBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &blitBarrier);
+		vkEndCommandBuffer(cBuffer);
+		currentAccess = blitBarrier.dstAccessMask;
+		currentLayout = blitBarrier.newLayout;
+		currentSR = blitBarrier.subresourceRange;
+
+		VkSubmitInfo blitSubmit;
+		blitSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		blitSubmit.pNext = nullptr;
+		blitSubmit.waitSemaphoreCount = 0;
+		blitSubmit.pWaitSemaphores = nullptr;
+		blitSubmit.pWaitDstStageMask = 0;
+		blitSubmit.commandBufferCount = 1;
+		blitSubmit.pCommandBuffers = &cBuffer;
+		blitSubmit.signalSemaphoreCount = 0;
+		blitSubmit.pSignalSemaphores = nullptr;
+		vkQueueSubmit(presentQueue, 1, &blitSubmit, VK_NULL_HANDLE);
+		vkQueueWaitIdle(presentQueue);
+		vkResetCommandBuffer(cBuffer, 0);
+	}
+---------------------------------------------------------------------------------------------------
+Old Descriptor System
+---------------------------------------------------------------------------------------------------
+	class DescriptorSystem {
+		DescriptorSystem(VulkanState*);
+		~DescriptorSystem();
+
+		VulkanState* vkState;
+
+		std::vector<VkDescriptorPool> pools;
+		size_t freeID = 0;
+		const uint32_t maxSetsPerPool = 1000;
+		std::array<VkDescriptorPoolSize, 11> poolSizes;
+		std::array<double, 11> descriptorTypeWeights;
+		std::vector<std::array<uint32_t, 11>> poolSizeLimits;
+
+		std::vector<VkDescriptorSet> sets;
+		std::vector<VkDescriptorSet> setsPending;
+		std::vector<VkDescriptorSetLayout> layoutsPending;
+		//should be map of <std::string(name), std::vector<MetaDescriptor>>?
+		std::vector<MetaDescriptor> manifest;
+
+		VulkanArray* infoStorageBuffer;//TODO: make a dynamic VkBuffer struct... or just make this super large
+		PerObjectRenderData* infoActual;
+		void* infoMappedMemory;
+		std::vector<VulkanArray*> PerFrameUBO;
+		//std::vector<VkSampler*> activeSamplers; //may be a hack idk yet
+		//std::vector<VkImageView> textureStorageBuffer; //inactive ATM, maybe bindless will bring it in
+		//size_t freeOffset = 0; //used for dynamic offsetting but...idk if it will be needed
+
+		VkDescriptorType checkPoolAvailability(std::vector<DescriptorGenerationData>&, VkBool32&);
+		void generateNewPool(VkDescriptorType);
+		void allocatePendingSets();
+
+		friend class Accelerator;
+	public:
+		//Returns one index for each descriptor binding in the set for however many sets are requested.
+		//Offset = setNum, Size = numSets * Stride, Stride = numBindings
+		//should be called RegisterLayout()?
+		std::vector<size_t> createDescriptorSet(VkDescriptorSetLayout, std::vector<DescriptorGenerationData>&, size_t);
+		//need a separate method to request sets from an already registered layout if so
+		void connectDescriptors(std::vector<size_t>, SAGEDescriptorDataType);
+		void connectDescriptors(std::vector<size_t>, VkImageView, VkSampler);
+		void updateDescriptor(size_t, void*);
+		void updateObjectLevelDescriptor(size_t, PerObjectRenderData&);
+		void updateDescriptor(size_t, VkImageView, VkSampler = VK_NULL_HANDLE);
+		void bindDescriptors(std::vector<size_t>&, VkCommandBuffer&, VkPipelineLayout&);
+	};
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+		void DescriptorSystem::connectDescriptors(std::vector<size_t> ID, SAGEDescriptorDataType data) {
+		if (setsPending.size() > 0) allocatePendingSets();
+		std::vector<VkDescriptorBufferInfo> infos{ID.size()};
+		std::vector<VkWriteDescriptorSet> writes{ID.size()};
+		switch (data)
+		{
+		case SAGE_PER_FRAME_CAMERA_DATA:
+			for (size_t i = 0; i < ID.size(); i++) {
+				size_t x = ID[i];
+				manifest[x].offset = PerFrameUBO.size();
+				manifest[x].stride = sizeof(CameraData);
+				VulkanArray* tempBuffer = new VulkanArray(
+					vkState,
+					sizeof(CameraData),
+					VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+					VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+				infos[i].buffer = tempBuffer->handle();
+				infos[i].offset = 0;
+				infos[i].range = manifest[x].stride;
+				writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				writes[i].pNext = nullptr;
+				writes[i].dstSet = sets[manifest[x].setIndex];
+				writes[i].dstBinding = manifest[x].binding;
+				writes[i].dstArrayElement = 0;
+				writes[i].descriptorCount = 1;
+				writes[i].descriptorType = manifest[x].type;
+				writes[i].pBufferInfo = &infos[i];
+				writes[i].pImageInfo = nullptr;
+				writes[i].pTexelBufferView = nullptr;
+				PerFrameUBO.push_back(tempBuffer);
+				manifest[x].linkedResource = PerFrameUBO[manifest[x].offset];
+				vkMapMemory(vkState->vulkanDevice, PerFrameUBO[manifest[x].offset]->data(), 0, PerFrameUBO[manifest[x].offset]->size(), 0, &manifest[x].pMappedMemory);
+			}
+			break;
+		case SAGE_PER_FRAME_SCENE_DATA:
+			for (size_t i = 0; i < ID.size(); i++) {
+				size_t x = ID[i];
+				manifest[x].offset = PerFrameUBO.size();
+				manifest[x].stride = sizeof(APSceneData);
+				VulkanArray* tempBuffer = new VulkanArray(
+					vkState,
+					sizeof(APSceneData),
+					VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+					VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+				infos[i].buffer = tempBuffer->handle();
+				infos[i].offset = 0;
+				infos[i].range = manifest[x].stride;
+				writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				writes[i].pNext = nullptr;
+				writes[i].dstSet = sets[manifest[x].setIndex];
+				writes[i].dstBinding = manifest[x].binding;
+				writes[i].dstArrayElement = 0;
+				writes[i].descriptorCount = 1;
+				writes[i].descriptorType = manifest[x].type;
+				writes[i].pBufferInfo = &infos[i];
+				writes[i].pImageInfo = nullptr;
+				writes[i].pTexelBufferView = nullptr;
+				PerFrameUBO.push_back(tempBuffer);
+				manifest[x].linkedResource = PerFrameUBO[manifest[x].offset];
+				vkMapMemory(vkState->vulkanDevice, PerFrameUBO[manifest[x].offset]->data(), 0, PerFrameUBO[manifest[x].offset]->size(), 0, &manifest[x].pMappedMemory);
+			}
+			break;
+		case SAGE_PER_OBJECT_DATA:
+			for (size_t i = 0; i < ID.size(); i++) {
+				size_t x = ID[i];
+				manifest[x].offset = 0;//tbd
+				manifest[x].stride = infoStorageBuffer->size();//tbd
+				infos[i].buffer = infoStorageBuffer->handle();
+				infos[i].offset = 0;
+				infos[i].range = manifest[x].stride;
+				writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				writes[i].pNext = nullptr;
+				writes[i].dstSet = sets[manifest[x].setIndex];
+				writes[i].dstBinding = manifest[x].binding;
+				writes[i].dstArrayElement = 0;
+				writes[i].descriptorCount = 1;
+				writes[i].descriptorType = manifest[x].type;
+				writes[i].pBufferInfo = &infos[i];
+				writes[i].pImageInfo = nullptr;
+				writes[i].pTexelBufferView = nullptr;
+				manifest[x].linkedResource = infoStorageBuffer;
+				manifest[x].pMappedMemory = infoMappedMemory;
+			}
+			break;
+		default:
+			std::cout << "Unrecognized Data Type, stop messing around!\n\n\n";
+			break;
+		}
+		vkUpdateDescriptorSets(vkState->vulkanDevice, writes.size(), writes.data(), 0, nullptr);
+	}
+	void DescriptorSystem::connectDescriptors(std::vector<size_t> ID, VkImageView texture, VkSampler sampler) {
+		if (setsPending.size() > 0) allocatePendingSets();
+		std::vector<VkDescriptorImageInfo> infos{ID.size()};
+		std::vector<VkWriteDescriptorSet> writes{ID.size()};
+		for (size_t i = 0; i < ID.size(); i++) {
+			size_t x = ID[i];
+			infos[i].sampler = sampler;
+			infos[i].imageView = texture;
+			infos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writes[i].pNext = nullptr;
+			writes[i].dstSet = sets[manifest[x].setIndex];
+			writes[i].dstBinding = manifest[x].binding;
+			writes[i].dstArrayElement = 0;
+			writes[i].descriptorCount = 1;
+			writes[i].descriptorType = manifest[x].type;
+			writes[i].pImageInfo = &infos[i];
+			writes[i].pBufferInfo = nullptr;
+			writes[i].pTexelBufferView = nullptr;
+		}
+		vkUpdateDescriptorSets(vkState->vulkanDevice, writes.size(), writes.data(), 0, nullptr);
+	}
+	void DescriptorSystem::updateDescriptor(size_t ID, void* data) {
+		MetaDescriptor toUpdate = manifest[ID];
+		//CameraData* hack1 = (CameraData*)data;
+		//APSceneData* hack2 = (APSceneData*)data;
+		switch (toUpdate.type) {
+		case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+			memcpy(toUpdate.pMappedMemory, data, toUpdate.stride);
+			//if (ID % 2 == 0) memcpy(toUpdate.pMappedMemory, hack1, toUpdate.stride);
+			//else memcpy(toUpdate.pMappedMemory, hack2, toUpdate.stride);
+			break;
+		case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+			std::cout << "Nothing to see here.\n";
+			break;
+		default:
+			std::cout << "Unsupported type!\n";
+			return;
+		}
+	}
+	void DescriptorSystem::updateObjectLevelDescriptor(size_t ID, PerObjectRenderData& data) {
+		infoActual[ID] = data;
+	}
+	void DescriptorSystem::bindDescriptors(std::vector<size_t>& indices, VkCommandBuffer& buffer, VkPipelineLayout& layout) {
+		std::vector<VkDescriptorSet> yoHo;
+		for (auto& i : indices) {
+			size_t tempdex = manifest[i].setIndex;
+			//need to check that we don't have repeats here?
+			yoHo.push_back(sets[tempdex]);
+		}
+		
+		vkCmdBindDescriptorSets(
+			buffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			layout,
+			0,
+			yoHo.size(),
+			yoHo.data(),
+			0,
+			nullptr);//  Might be work with dynamic offsetting.
+		//maybe has 3 levels depending on what kind of set it is, this one is a per-material (level 2) bind.
+	}
+	VkDescriptorType DescriptorSystem::checkPoolAvailability(std::vector<DescriptorGenerationData>& patsy, VkBool32& boo) {
+		std::array<int, 11> budgets{};
+		for (auto& x : patsy) {
+			budgets[x.type]++;
+		}
+		VkDescriptorType t;
+		for (size_t i = 0; i < patsy.size(); i++) {
+			t = patsy[i].type;
+			boo = VK_FALSE;
+			for (size_t j = 0; j < poolSizeLimits.size(); j++) {
+				int numAvail = poolSizeLimits[j][t];
+				if (numAvail - budgets[t] < 0) {
+					if (j + 1 < poolSizeLimits.size()) continue;
+					boo = VK_TRUE;
+					return t;
+				}
+			}
+		}
+		return VK_DESCRIPTOR_TYPE_MAX_ENUM;
+	}
+	void DescriptorSystem::generateNewPool(VkDescriptorType ranOutIndex) {//works for as long as these are kept to the original types, refactor if we use more
+		size_t iPrev = pools.size() - 1;
+		std::array<double, 11> percUtilizedCollection{};
+		double sum = 0.0;
+		for (size_t i = 0; i < descriptorTypeWeights.size(); i++) {
+			if (i == ranOutIndex) percUtilizedCollection[i] = 1.0;
+			else if (descriptorTypeWeights[i] <= 1.0 / maxSetsPerPool) percUtilizedCollection[i] = 0.0;//do the special if we could end up dividing by 0
+			else percUtilizedCollection[i] = 1.0 - ((double)poolSizeLimits[iPrev][i] / (descriptorTypeWeights[i] * maxSetsPerPool));
+			sum += percUtilizedCollection[i];
+		}
+		for (size_t i = 0; i < descriptorTypeWeights.size(); i++) {//normalize weights
+			descriptorTypeWeights[i] = percUtilizedCollection[i] / sum;
+		}
+		pools.push_back({});
+		poolSizeLimits.push_back({});
+		iPrev++;
+		for (size_t i = 0; i < poolSizes.size(); i++) {
+			uint32_t useLimit = maxSetsPerPool * descriptorTypeWeights[i];
+			if (useLimit == 0) useLimit++;
+			poolSizeLimits[iPrev][i] = useLimit;
+			poolSizes[i].descriptorCount = useLimit;
+		}
+		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo;
+		descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		descriptorPoolCreateInfo.pNext = nullptr;
+		descriptorPoolCreateInfo.flags = 0;
+		descriptorPoolCreateInfo.maxSets = maxSetsPerPool;
+		descriptorPoolCreateInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+		descriptorPoolCreateInfo.pPoolSizes = poolSizes.data();
+		vkCreateDescriptorPool(vkState->vulkanDevice, &descriptorPoolCreateInfo, nullptr, &pools[iPrev]);
+	}
+	void DescriptorSystem::allocatePendingSets() {
+		VkDescriptorSetAllocateInfo allInfo;
+		allInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allInfo.pNext = nullptr;
+		allInfo.descriptorPool = pools[pools.size() - 1];
+		allInfo.descriptorSetCount = setsPending.size();
+		allInfo.pSetLayouts = layoutsPending.data();
+		vkAllocateDescriptorSets(vkState->vulkanDevice, &allInfo, setsPending.data());
+
+		sets.insert(sets.end(), setsPending.begin(), setsPending.end());
+		setsPending.clear();
+		layoutsPending.clear();
+	}
+	///////////////////////////////////////////////////////////////////////////////////////////////////////
+	
+	For Acceleration Program:
+		//most likely want the material library to handle registration 
+		//for the first time a program is handed out.
+		void registerWith(DescriptorSystem*);
+		void unregisterFrom(DescriptorSystem*);
+
+		//second argument can be either the frame or object number, depending on the descriptor.
+		size_t getDescriptorManifestEntry(std::string, size_t);
+
+		void AccelerationProgram::registerWith(DescriptorSystem* deez) {
+		//		if (!inUse) { if another material already uses this program...idk why that would come up since mats are based around a single program but perhaps...
+		std::vector<size_t> temp;
+		for (size_t i = 0; i < descriptorSetLayouts.size(); i++) {
+			temp = deez->createDescriptorSet(descriptorSetLayouts[i], descriptorSetData[i], vkState->swapchainBuffers);
+			descriptorSystemManifestEntries.push_back(temp);//will have to ultimately turn into a concat
+			//with the main slots being reserved at creation and we just append entries as more sets are needed.
+		}
+		//		}
+	}
+	size_t AccelerationProgram::getDescriptorManifestEntry(std::string descriptorName, size_t frameOrObjectNumber) {
+		bool isPresent = false;
+		size_t set, binding, bindingStride;
+		for (auto& s : descriptorSetData) {
+			for (auto& b : s) {
+				if (b.name == descriptorName) {
+					isPresent = true;
+					set = b.set;
+					binding = b.binding;
+					bindingStride = s.size();
+					goto eureka;
+				}
+			}
+		}
+	eureka:
+		if (!isPresent) return SIZE_MAX;//idk error out when we get to that
+
+		return descriptorSystemManifestEntries[set][(frameOrObjectNumber * bindingStride) + binding];
+	}
+
+---------------------------------------------------------------------------------------------------
+Notes/pseudocode on GSM 6.10 encoding
+---------------------------------------------------------------------------------------------------
+	Encoding outline:
+(outside of the per-frame loop)
+	int16_t offsetNonRecursiveVar = 0;
+	int32_t offsetVar = 0;
+
+	int16_t preempFilterVar = 0;
+
+	int16_t staFilterArr[8]; PopulateFullArr(staFilterArr, 0);
+(begin per-frame stepping loop)
+(begin Preprocessing Section)
+(4.2.0 - scaling of the input variable)
+	int16_t input[160] where only the top 13 bits are considered valid
+(4.2.1 - downscaling of the input signal)
+	int16_t downscaled[160]
+	for (i->160){
+		downscaled[i] = input[i] >>3; //deletes the nonsense bits
+		downscaled[i] <<= 2; //bring it back, idk why only 2 though
+	}
+(4.2.2 - offset compensation)
+	int16_t sOffset[160];
+
+	for (i->160){
+	//non-recursive part
+		int16_t s1 = GSM_SUB(downscaled[i], offsetNonRecursiveVar);
+
+		offsetNonRecursiveVar = downscaled[i];
+	//recursive part
+		int32_t L_s2 = s1;
+		int32_t L_s2 = L_s2 << 15;
+	//Execution of a 31 by 16 bits multiplication
+		int16_t msp = offsetVar >> 15;
+		int16_t lsp = GSM_L_SUB(offsetVar, (msp << 15));
+		int16_t temp = GSM_MULT_R(lsp, 32735);
+		int32_t L_s2 = GSM_L_ADD(L_s2, temp);
+
+		offsetVar = GSM_L_ADD(GSM_L_MULT(msp, 32735) >> 1, L_s2);
+	//Compute offset sample
+		sOffset[i] = GSM_L_ADD(offsetVar, 16384) >> 15;
+	}
+(4.2.3 - preemphasis filter)
+	int16_t signal[160];
+	for(i->160){
+		signal[i] = GSM_ADD(sOffset[i], GSM_MULT_R(preempFilterVar, -28180));
+		preempFilterVar = sOffset[i];
+	}
+(begin LPC Analysis Section)
+(4.2.4 - autocorrelation)
+* The goal is to compute the array L_ACF[k].  The signal s[i] must be scaled in order to avoid an overflow situation. *
+//Dynamic scaling of the array signal[160].
+	//Search for the maximum
+	int16_t sigMax = 0;
+	for(i->160){
+	sigMax = max(sigMax, abs(signal[i]));
+	}
+	//Computation of the scaling factor
+	int16_t scale = sigMax == 0 ? 0 : GSM_SUB(4, GSM_NORM( sigMax << 16));
+	//Scaling the array
+	if(scale > 0){
+		int16_t temp = 16384 >> GSM_SUB( scale, 1);
+		for(i->160){
+			signal[i] = GSM_MULT_R(signal[i], temp);
+		}
+	}
+	//Compute the L_ACF[9]
+	int32_t autocorrelation[9];
+	for( i->9){
+		autocorrelation[i] = 0;
+		for( j = i; j < 160; j++){
+			int32_t temp = GSM_L_MULT(signal[j], signal[j - i]);
+			int32_t autocorrelation[i] = GSM_L_ADD(autocorrelation[i], temp);
+		}
+	}
+	//Rescaling signal[160]
+	if (scale > 0) {
+		for(i->160){
+			signal[i] <<= scale;
+		}
+	}
+(4.2.5 - Computation of the reflection coefficients)
+	//Schur recursion with 16 bits arithmetic
+	int16_t reflections[9];
+	if (autocorrelation[0] == 0){
+		for(i = 1; i < 9; i++){
+			reflections[i] = 0;
+		}
+		goto (4.2.6);
+	}
+	int16_t autocor[9];
+	int16_t temp = GSM_NORM(autocorrelation[0]);
+	for(i->9){
+		autocor[i] = (autocorrelation[i] << temp) >> 16;
+	}
+	//Initialize array P[] and K[] for the recursion
+	int16_t P[9];
+	int16_t K[9];
+	for(i->9){
+		P[i] = autocor[i];
+	}
+	for(i = 1; i < 8; i++){
+		K[9-i] = autocor[i];
+	}
+	//Compute reflection coefficients
+	for( i = 1; i < 9; i++){
+		if(P[0] < abs(P[1])){
+			for( j = i; j < 9; j++){
+				reflections[j] = 0;
+			}
+			goto (4.2.6);
+		}
+		reflections[i] = GSM_DIV(abs(P[1]), P[0]);
+		if (P[1] > 0) reflections[i] = GSM_SUB(0,reflections[i]); //negate
+		if (i == 8) goto (4.2.6);
+		//schur recursion
+		P[0] = GSM_ADD(P[0], GSM_MULT_R(P[1], r[i]));
+		for(k = 1; k < 9-i; k++){
+			P[k] = GSM_ADD(P[k+1], GSM_MULT_R( K[9-k], reflections[i]));
+			K[9-k] = GSM_ADD(K[9-k], GSM_MULT_R( P[k+1], reflections[i]));
+		}
+	}
+(4.2.6 - Transformation of reflection coefficients to Log-Area Ratios)
+	* The Following scaling for reflections[] and LAR[] has been used:
+	* reflections[x] = integer(r_reflections[x] * 32768) where -1 <= r_reflections[x] < 1
+	* LAR[x] = integer( r_LAR[x] * 16384) where -1.625 <= r_LAR[x] <= 1.625
+	//Computation of the LAR[1-8] from the reflections[1-8]
+	for(i = 1; i < 9; i++){
+		int16_6 temp = abs(reflections[i]);
+		if(temp < 22118) temp >>= 1;
+		else if(temp < 31130) temp = GSM_SUB(temp, 11059);
+		else temp = GSM_SUB(temp, 26112) << 2;
+		LAR[i] = reflections[i] < 0 ? -temp : temp;
+	}
+(4.2.7 - Quantization and coding of the Log-Area Ratios)
+	* This procedure needs four tables; the following wquations give the optimum scaling for the constants:
+	* A[1-8] = integer(r_A[1-8]*1024); 8 values (see table 4.1)
+	* B[1-8] = integer(r_B[1-8]*512); 8 values (see table 4.1)
+	* MAC[1-8] = max of LARc[1-8]; 8 values (see table 4.1)
+	* MIC[1-8] = min of LARc[1-8]; 8 values (see table 4.1)
+	----------------------------------------
+    |              TABLE 4.1               |
+	----------------------------------------
+	| i |  A[i]  | B[i]  | MIC[i] | MAC[i] |
+	----------------------------------------
+	| 1 |  20480 |   0   |   -32  |   31   |
+	| 2 |  20480 |   0   |   -32  |   31   |
+	| 3 |  20480 | 2048  |   -16  |   15   |
+	| 4 |  20480 | -2560 |   -16  |   15   |
+	| 5 |  13964 |  94   |   -8   |   7    |
+	| 6 |  15360 | -1792 |   -8   |   7    |
+	| 7 |  8534  | -341  |   -4   |   3    |
+	| 8 |  9036  | -1144 |   -4   |   3    |
+	----------------------------------------
+
+	int16_t A[9] = makeATable();
+	int16_t B[9] = makeBTable();
+	int16_t MIC[9] = makeMICTable();
+	int16_t MAC[9] = makeMACTable();
+	int16_t LARc[9];
+	for(i = 1; i < 9; i++){
+		int16_t temp = GSM_MULT(A[i], LAR[i]);
+		temp = GSM_ADD(temp, B[i]);
+		temp = GSM_ADD(temp, 256); // for rounding
+		LARc[i] = temp >> 9;
+		//check if LARc[i] lies between MIN and MAX
+		clamp(LARc[i], MIC[i], MAC[i]);
+		LARc[i] = GSM_SUB(LARc[i], MIC[i]); //Make all LARc values positive
+	}
+(Begin Short Term Filtering Section)
+(4.2.8 - Decoding of the coded Log-Area Ratios) -- THIS WILL BE IMPORTANT FOR DECODING LATER, PAY ATTENTION
+	* This procedure requires for efficient implementation of two tables.
+	* MIC[1-8] = min of LARc[1-8]; 8 values (see table 4.1)
+	* INVA[1-8] = integer((32768*8) / (r_A[1-8]); 8 values (see table 4.2)
+	---------------
+	|  TABLE 4.2  |
+	---------------
+	| i | INVA[i] |
+	| 1 |  13107  |
+	| 2 |  13107  |
+	| 3 |  13107  |
+	| 4 |  13107  |
+	| 5 |  19223  |
+	| 6 |  17476  |
+	| 7 |  31454  |
+	| 8 |  29708  |
+	---------------
+
+	//Compute the LAR_pp[1-8]
+	int16_t INVA[9] = makeINVATable();
+	int16_t LAR_pp[9];
+	for( i = 1; i < 9 ; i++){
+		int16_t temp1 = GSM_ADD( LARc[i], MIC[i] ) << 10; // the addition restores the sign of LARc
+		int16_t temp2 = B[i] << 1;
+		temp1 = GSM_SUB(temp1, temp2);
+		temp1 = GSM_MULT_R(INVA[i], temp1);
+		LAR_pp[i] = GSM_ADD(temp1, temp2);
+	}
+(4.2.9 - Computation of the quantized reflection coefficients)
+* Within each frame of 160 analyzed speech samples the short term analysis and synthesis filters 
+* operate with four different sets of coefficients, derived from 
+* the previous set of decoded LAR (LAR_pp(j-1)) and the actual set of decoded LAR (LAR_pp(j)).
+(4.2.9.1 - Interpolation of the LARpp[1-8] to get the LAR_p[1-8])
+	int16_t prevLAR_pp[9];  PopulateFullArr(prevLAR_pp, 0);
+	int16_t LAR_p[9];
+	For samples 0 to 12:
+		for(i = 1; i < 9; i++){
+			LAR_p[i] = GSM_ADD((prevLAR_pp[i] >> 2), (LAR_pp[i] >> 2));
+			LAR_p[i] = GSM_ADD(LAR_p[i], prevLAR_pp[i] >> 1);
+		}
+	For samples 13 to 26:
+		for(i = 1; i < 9; i++){
+			LAR_p[i] = GSM_ADD((prevLAR_pp[i] >> 1), (LAR_pp[i] >> 1));
+		}
+	For samples 27 to 39:
+		for(i = 1; i < 9; i++){
+			LAR_p[i] = GSM_ADD((prevLAR_pp[i] >> 2), (LAR_pp[i] >> 2));
+			LAR_p[i] = GSM_ADD(LAR_p[i], LAR_pp[i] >> 1);
+		}
+	For samples 40 to 159:
+		for(i = 1, i < 9; i++){
+			LAR_p[i] = LAR_pp[i];
+		}
+(4.2.9.2 - Computation of the reflections_p[1-8] from the interpolated LAR_p[1-8])
+* The input of this procedure is the interpolated LAR_p array.
+* The reflection coefficients, r_p, are used in the analysis filter and in the synthesis filter.
+	int16_t r_p[9];
+	for(i=1; i<9; i++){
+		int16_t temp = abs(LAR_p[i]);
+		if (temp < 11059) temp <<= 1;
+		else if (temp < 20070) temp = GSM_ADD(temp, 11059);
+		else temp = GSM_ADD((temp >> 2), 26112);
+		r_p[i] = LAR_p[i] < 0? -temp : temp;
+	}
+(4.2.10 - Short term analysis filtering)
+* This procedure computes the short term residual signal (d[]) to be fed to the RPE-LTP loop
+* from the (s[]) signal and from the local quantized reflection coefficients (rp[]).
+* As the call of this procedure can be done in many ways
+* (see the interpolation of the LAR coefficient)
+* it is assumed that the computation begins with the index k_start (for arrays d[] and s[])
+* and stops with index k_end (as defined in the four sections of 4.9.2.1).
+* This procedure also needs to keep the array staFilterArr[0-7] (u[]) in memory for each call.
+	
+	int16_t shortTermResidualSignal[160];
+
+	For(i->160){
+		int16_t subsample = signal[s];
+		int16_t staVar = subsample;
+		for( j = 1; j < 9; j++){
+			int16_t temp = GSM_ADD(staFilterArr[j-1], GSM_MULT_R(r_p[j], subsample));
+			subsample = GSM_ADD(subsample, GSM_MULT_R(r_p[j], staFilterArr[j-1]));
+			staFilterArr[j-1] = staVar;
+			staVar = temp;
+		}
+		shortTermResidualSignal[i] = subsample;
+	}
+(Begin Long Term Predictor Section)
+(4.2.11 - Calculation of the LTP Parameters)
+* This procedure computes the LTP gain (bc) and the LTP lag (Nc) for the long term analysis filter.
+* This is done by calculating a maximum of the cross-correlation function between
+* the current sub-segment short term residual signal (d[40]) 
+*(output of the short term analysis filter; for simplification the index of this array begins at 0 and ends at 39
+*for each sub-segment of the RPE-LTP analysis)
+* and the previous reconstructed short term residual signal dp[-120 - -1].
+* A dynamic scaling must be performed to avoid overflow.
+	//Search of the optimum scaling of d[40]
+	int16_t max = 0;
+	for(i->40){
+		int16_t temp = abs(shortTermResidualSignal[i]);
+		if (temp > max) max = temp;
+	}
+	int16_t temp = 0;
+	int16_t scale;
+	if (max == 0) scale = 0;
+	else temp = GSM_NORM( max << 16);
+	if (temp > 6) scale = 0;
+	else scale = GSM_SUB(6, temp);
+	//Initialization of a working array wt[40]
+	int16_t workingArr[40];
+	for(i->40){
+		workingArr[i] = shortTermResidualSignal[i] >> scale;
+	}
+	//Search for the maximum cross-correlation and coding of the LTP lag
+	int32_t L_max = 0;
+	int16_t ltpLag = 40;
+
+	for(i = 40; i < 121; i++){
+		int32_t L_result = 0;
+		for(j->40){
+			int32_t temp = GSM_L_MULT(workingArr[j], d_p is the complete set of all samples pervious to our current subsection[j - i]);
+			//the d_p indexing will take us negeative fyi so...this needs figuring out and I hate this pseudocode >:C
+			//AND THEN AFTER SEVERAL PAGES, AT THE BOTTOM: Initial value: dp[-120..-1] = 0 JEE FUCKIN THANKS
+			L_result = GSM_L_ADD(temp, L_result);
+		}
+		if(L_result > L_max){
+			ltpLag = i;
+			L_max = L_result;
+		}
+	}
+	//Rescaling of L_max
+	L_max >>= GSM_SUB(6, scale);
+	//Initialization of a working array wt[40]
+	int16_t workingArr[40];
+	for(i->40){
+		workingArr[i] = d_p[i - ltpLag] >> 3;
+	}
+	//Compute the power of the reconstructed short term residual signal d_p[]
+	int32_t L_power = 0;
+	for(i->40){
+		int32_t temp = GSM_L_MULT(workingArr[i], workingArr[i]);
+		L_power = GSM_L_ADD(temp, L_power);
+	}
+	//Normalization of L_max and L_power
+	int16_t ltpGainc;
+	if(L_max <= 0){
+		ltpGainc = 0;
+		goto (4.2.12);
+	}
+	if(L_max >= L_power){
+		ltpGainc = 3;
+		goto (4.2.12);
+	}
+	int16_t temp = GSM_NORM(L_power);
+	int16_t R = (L_max << temp) >> 16;
+	int16_t S = (L_power << temp) >> 16;
+	//Coding of the LTP gain
+	* Table 4.3 must be used to obtain the decision level (DLB[i]) for the quantization of the LTP gain b to get the coded version bc
+	-----------------------
+	|      TABLE 4.3      |
+	-----------------------
+	| i | DLB[i] | QLB[i] |
+	| 0 |  6554  |  3277  |
+	| 1 | 16384  | 11469  |
+	| 2 | 26214  | 21299  |
+	| 3 | 32767  | 32767  |
+	-----------------------
+
+	int16_t DLB[4] = makeDLBTable();
+	for(ltpGainc->3) if (R <= GSM_MULT(S, DLB[ltpGainc])) goto (4.2.12);
+	ltpGainc = 3;
+(4.2.12 - Long term analysis filtering)
+	int16_t QLB[4] = makeQLBTable();
+	//Decoding of the coded LTP gain
+	int16_t ltpGain_p = QLB[ltpGainc];
+	//Calculating the array e[40] and dpp[40]
+	int16_t shortTermResidualSignal_pp[40];
+	int16_t e[40];
+
+	for(i->40){
+	shortTermResidualSignal_pp[i] = GSM_MULT_R(ltpGain_p, d_p[i - ltpLag]);
+	e[i] = GSM_SUB(shortTermResidualSignal[i], shortTermResidualSignal_pp[i]);
+	}
+(Begin RPE Encoding Section)
+(4.2.13 - Weighting Filter)
+	* The coefficients of the weighting filter are stored in table 4.4
+	* The following scaling is used: H[11] = integer( real_H[11]*8192 );
+	-------------
+	| TABLE 4.4 |
+	-------------
+	|  i | H[i] |
+	|  0 | -134 |
+	|  1 | -374 |
+	|  2 |   0  |
+	|  3 | 2054 |
+	|  4 | 5741 |
+	|  5 | 8192 |
+	|  6 | 5741 |
+	|  7 | 2054 |
+	|  8 |   0  |
+	|  9 | -374 |
+	| 10 | -134 |
+	-------------
+
+	int16_t H[11] = makeHTable(); //impulse response
+	//Initialization of a temporary working array wt[50]
+	int16_t workingArr[50];
+	for(i->5){
+		workingArr[i] = 0;
+		workingArr[i + 45] = 0;
+	}
+	for(i = 5; i < 45; i++){
+		workingArr[i] = e[i - 5];
+	}
+	//Compute the signal x[40]
+	int16_t x[40];
+	for(i->40){
+		int32_t L_result = 8192; //rounding of the output of the filter
+		for(j->11){
+			int32_t temp = GSM_L_MULT(workingArr[i+j], H[j]);
+			L_result = GSM_L_ADD(L_result, temp);
+		}
+		L_result = GSM_L_ADD(L_result, L_result); //scaling x2
+		L_result = GSM_L_ADD(L_result, L_result); //scaling x4
+		x[i] = L_result >> 16;
+	}
+(4.2.14 - RPE grid selection)
+	int16_t Emax = 0;
+	int16_t rpeGridSelection = 0;
+
+	for(i->4){
+		int32_t result = 0;
+		for(j->13){
+			int16_t temp1 = x[i + (3*j)] >> 2];
+			int32_t temp2 = GSM_L_MULT(temp1, temp1);
+			result = GSM_L_ADD(temp2, result);
+		}
+		if (result > Emax){
+			rpeGridSelection = i;
+			Emax = result;
+		}
+	}
+	//Down-sampling by a factor of 3 to get the selected xM[13] RPE sequence.
+	int16_t xM[13];
+	for(i->13){
+		xM[i] = x[rpeGridSelection + (3*i)];
+	}
+(4.2.15 - APCM quantization of the selected RPE sequence)
+	//Find the maximum absolute value xmax of xM[13]
+	int16_t xmax = 0;
+	for(i->13){
+		int16_t temp = abs(xM[i]);
+		if (temp > xmax) xmax = temp;
+	}
+	//Quantizing and coding of xmax to get xmax_c
+	int16_t exp = 0;
+	int16_t temp = xmax >> 9;
+	int16_t itest = 0;
+	for(i->6){
+		if(temp <= 0) itest = 1;
+		temp >>= 1;
+		if(itest == 0) exp = GSM_ADD(exp, 1);
+	}
+	temp = GSM_ADD(exp, 5);
+	int16_t xmax_c = GSM_ADD((xmax >> temp), (exp << 3));
+
+	//Quantizing and coding of the xM[13] RPE sequence to get the xM_c[13]
+	* This computations uses the fact that the decoded version of xmax_c can be calculated by
+	* using the exponent and the mantissa part of xmax_c (logarithmic table).
+	* So, this method avoids any division and uses only a scaling of the RPE samples by
+	* a function of the exponent.  A direct multiplication by the inverse of the mantissa
+	* (NRFAC[0-7] found in table 4.5)
+	* gives the 3 bit coded version xMc[13] of the RPE samples.
+	----------------
+	|  TABLE 4.5   |
+	----------------
+	| i | NRFAC[i] |
+	| 0 |  29128   |
+	| 1 |  26215   |
+	| 2 |  23832   |
+	| 3 |  21846   |
+	| 4 |  20165   |
+	| 5 |  18725   |
+	| 6 |  17476   |
+	| 7 |  16384   |
+	----------------
+	int16_t NRFAC[8] = makeNRFACTable();
+
+	//Compute exponent and mantissa of the decoded version of xmax_c
+	exp = 0;
+	if(xmax_c > 15) exp = GSM_SUB((xmax_c >> 3), 1);
+	int16_t mant = GSM_SUB(xmax_c, (exp << 3));
+
+	//Normalize mantissa 0 <= mant <= 7
+	if (mant == 0){
+		exp = -4;
+		mant = 15;
+	}
+	else{
+		itest = 0;
+		for(i->3){
+			if(mant > 7) itest = 1;
+			if(itest == 0){
+				mant = GSM_ADD((mant << 1), 1);
+				exp = GSM_SUB(exp, 1);
+			}
+		}
+	}
+	mant = GSM_SUB(mant, 8);
+
+	//Direct computation of xM_c[13] using table 4.5
+	int16_t temp1 = GSM_SUB(6, exp); //normalization by the exponent
+	int16_t temp2 = NRFAC[mant]; //inverse mantissa
+
+	for(i->13){
+		int16_t temp = xM[i] << temp1;
+		temp = GSM_MULT(temp, temp2);
+		xM_c[i] = GSM_ADD( (temp >> 12), 4); //used to make all xM_c[i] positive
+	}
+	//Keep exp and mant in memory for the inverse APCM quantizer (below)
+(4.2.16 - APCM inverse quantization)
+* This part is for decoding the RPE sequence of coded xM_c[13] samples to obtain the xM_p[13] array.
+* Table 4.6 is used to get the mantissa of xmax_c (FAC[8]).
+--------------
+| TABLE 4.6  |
+--------------
+| i | FAC[i] |
+| 0 | 18431  |
+| 1 | 20479  |
+| 2 | 22527  |
+| 3 | 24575  |
+| 4 | 26623  |
+| 5 | 28671  |
+| 6 | 30719  |
+| 7 | 32767  | 
+--------------
+int16_t FAC[8] = makeFACTable();
+
+	int16_t temp1 = FAC[mant]
+	int16_t temp2 = GSM_SUB(6, exp);
+	int16_t temp3 = 1 << GSM_SUB(temp2, 1);
+	int16_t xM_p[13];
+	for(i->13){
+		int16_t temp = GSM_SUB( (xM_c[i] << 1), 7 ); //restores the sign of xM_c[i]
+		temp <<= 12;
+		temp = GSM_MULT_R(temp1, temp);
+		temp = GSM_ADD(temp, temp3);
+		xM_p[i] = temp >> temp2
+	}
+(4.2.17 - RPE grid positioning)
+	int16_t reconstLTRSignal[40];
+	for(i->40){
+		reconstLTRSignal[i] = 0;
+	}
+	for(i->13){
+		reconstLTRSignal[rpeGridSelection + (3*i)] = xM_p[i];
+	}
+(4.2.18 - Update of the reconstructed short term residual signal d_p[-120 - -1])
+* This procedure adds the reconstructed long term residual signal e_p[40]
+* to the estimated signal d_pp[40] from the long term analysis filter
+* to compute the reconstructed short term residual signal d_p[-40 - -1];
+* also the reconstructed short term residual array d_p[-120 - -41] is updated.
+	for(i->80){
+		d_p[-120 + i] = d_p[-80 + i];
+	}
+	for(i->40){
+		d_p[-40 + i] = GSM_ADD(reconstLTRSignal[i], shortTermResidualSignal_pp[i]);
+	}
+	//Keep d_p in memory for the next sub-segment
+	//Initial value d_p[-120, -1] = 0
+---------------------------------------------------------------------------------------------------
+And the Decoding in case I fudge something in the code
+---------------------------------------------------------------------------------------------------
+	Decoding outline:
+
+Only the synthesis filter and the de-emphasis procedure are different from the procedures found in the RPE-LTP encoder.
+Procedures (4.3.1) and (4.3.2) are executed for each subsegment (four times per frame).
+Procedures (4.3.3), (4.3.4), and (4.3.5) are executed once per frame
+
+(4.3.1 - RPE Decoding Section)
+	Procedures (4.2.15 - only the part to get mant and exp of xmax_c), (4.2.16), and (4.2.17) are used
+	to obtain the reconstructed long term residual signal er_p[40] signal from the received parameters
+	for each subsegment (M_c, xmax_c, xm_c[13]).
+(4.3.2 - Long Term Synthesis Filtering)
+	This procedure uses the b_c and N_c (both recieved) parameters to realize the long term synthesis filtering.
+	The decoding of b_c needs the use of table 4.3.
+
+	N is the received and decoded LTP lag.
+	An array d_p[-120 - 39] (recieved) is used in this procedure.
+
+	The elements for -120 to -1 of the array are kept in memory for the long term synthesis filter.
+	For each subsegment (40 samples), this procedure computes d_p[40] to be fed to the synthesis filter.
+
+	//Check the limits of N
+	int16_t n_p = 40;
+	N = N_c;
+	if (N_c < 40) N = n_p;
+	if (N_c > 120) N = n_p;
+	n_p = N;
+	//Keep the n_p value for the next sub-segment
+	//Decoding of the LRP gain b_c
+	int16_t b_p = QLB[b_c];
+	//Computation of the reconstructed short term residual signal d_p[40]
+	for(i->40){
+		int16_t d_pp = GSM_MULT_R(b_p, d_p[i - N]);
+		d_p[i] = GSM_ADD(e_p[i], d_pp);
+	}
+	//Update of the reconstructed short term residual signal d_p[-1 - -120]
+	for(i->120){
+		d_p[-120 + i] = d_p[-80 + i];
+	}
+	//Keep the array d_p[-120 - -1] for the next subsegment
+	//Initial values are 0
+(4.3.3 - Computation of the decoded reflection coefficients)
+	This procedure (which is executed once per frame) is the same as the one described in the encoder.
+
+	For decoding of the recieved LAR_c[1 - 8], see procedure (4.2.8)
+
+	For the interpolation of the decoded Log-Area Ratios, see procedure (4.2.9.1) and
+	for the computation of the reflection coefficients r_p[1-8], see procedure (4.2.9.2)
+(4.3.4 - Short Term Synthesis Filtering Section)
+	This procedure uses the d_p[40] signal and produces the s[160] signal which is the output of the
+	short term synthesis filter.  For ease of explanation, a temporary array[160] is used
+	//Initialization of the working array
+	//for the first subsegment in a frame
+	int16_t workingArr[160];
+	for(i->40){
+		workingArr[i] = d_p[i];
+	}
+	//for the second subsegment in a frame
+	int16_t workingArr[160];
+	for(i->40){
+		workingArr[40 + i] = d_p[i];
+	}
+	//for the third subsegment in a frame
+	int16_t workingArr[160];
+	for(i->40){
+		workingArr[80 + i] = d_p[i];
+	}
+	//for the fourth subsegment in a frame
+	int16_t workingArr[160];
+	for(i->40){
+		workingArr[120 + i] = d_p[i];
+	}
+	As the call of the short term synthesis filter procedure can be done in many ways (see the interpolation of the LAR coefficient)
+	it is assumed that the computation begins with k_start(for arrays wt[] and s[]) and stops with k_end.
+	(k_start and k_end are defined in (4.2.9.1))
+	The procedure also needs to keep the array v[9] in memory between calls.
+
+	int16_t s_i;
+	int16_t v[9];
+	for(i; each k_start and k_end range){
+		s_i = workingArr[i];
+		for(j = 1; j < 9 ; j++){
+			s_i = GSM_SUB( s_i, GSM_MULT_R( r_p[9-j], v[8-j]));
+			v[9-j] = GSM_ADD( v[8-j], GSM_MULT_R(r_p[9-j], sri));
+		}
+		s[i] = s_i;
+		v[0] = s_i;
+	}
+	//Keep v in memory for the next call
+	//initial values of v are 0
+(Postprocessing)
+(4.3.5 - Deemphasis filtering)
+	int16_t msr = 0;
+	int16_t s_o[160];
+	for(i->160){
+		int16_t temp = GSM_ADD( s[i], GSM_MULT_R(msr, 28180));
+		msr = temp;
+		s_o[i] = msr;
+	}
+	//keep msr in memory for the next frame
+(4.3.6 - Upscaling of the output signal)
+	for(i->160){
+		output[i] = GSM_ADD(s_o[i], s_o[i]);
+	}
+(4.3.7 - Truncation of the output variable)
+	for(i->160){
+		output[i] >>= 3;
+		output[i] <<= 3;
+	}
+
+	//Then there's a little note about compressing to ALAW that mentions CCITT G721...but fuck 'em (for now?)
+---------------------------------------------------------------------------------------------------
+Template
+---------------------------------------------------------------------------------------------------
