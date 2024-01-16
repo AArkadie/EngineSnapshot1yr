@@ -208,11 +208,11 @@ struct Atlas {//will become an asset
 			for (int32_t j = 0; j < entriesPerRow; j++) {
 				VkImageBlit2& alias = targets[i * entriesPerRow + j];
 				int32_t bull = (int32_t)stepX;
-				int32_t shit = (int32_t)stepY;
+				int32_t shin = (int32_t)stepY;
 				alias.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
 				alias.pNext = nullptr;
-				alias.srcOffsets[0] = { j * bull, i * shit,0 };
-				alias.srcOffsets[1] = { (j * bull) + bull, (i * shit) + shit, 1 };
+				alias.srcOffsets[0] = { j * bull, i * shin,0 };
+				alias.srcOffsets[1] = { (j * bull) + bull, (i * shin) + shin, 1 };
 				alias.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };//color, no mips, layer 0, 1 layer
 			}
 		}
