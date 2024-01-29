@@ -8,4 +8,4 @@ Things I learned: C++, Vulkan, SDL, GLSL, Signal Processing / Audio Programming,
 
 Chronology: CYOAMaker -> Audio -> HardwareAcceleration/Video -> Assets/DataTypes -> Mainframe -> Everything Else -> (Current)Revising Audio
 
-If you plan to build/run this, you'll need to uncomment some functions at the start of main() to perform some basic setup.
+If you plan to build/run this, you'll need to link to external libraries yourself and uncomment some functions at the start of main() to perform some basic setup before the first run.
